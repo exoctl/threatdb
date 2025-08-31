@@ -73,4 +73,12 @@ There are some plugins that you need to manipulate the engine using ThreatDB, bu
 - Easily deploy the engine using Docker, with a pre-configured `Dockerfile` for consistent builds and deployments across environments.
 
 
-<iframe width="560" height="315" src="https://www.youtube.com/embed/veUWvfSlv2M" title="ThreatDB - Detect Samples Families" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>
+<p align="center">
+  <a href="https://www.youtube.com/watch?v=veUWvfSlv2M">
+    <img src="https://img.youtube.com/vi/veUWvfSlv2M/maxresdefault.jpg" alt="ThreatDB - Detect Samples Families" width="560">
+  </a>
+</p>
+
+<p align="center">
+  <a href="https://www.youtube.com/watch?v=veUWvfSlv2M">Watch the ThreatDB Demo on YouTube</a>
+</p>
