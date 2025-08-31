@@ -1,0 +1,145 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* VirusTotal-inspired Threat Intelligence Design System */
+
+@layer base {
+  :root {
+    /* Core brand colors - Security blue theme */
+    --background: 210 20% 98%;
+    --foreground: 215 25% 15%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 215 25% 15%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 215 25% 15%;
+
+    /* Primary - Deep security blue */
+    --primary: 217 91% 44%;
+    --primary-foreground: 0 0% 100%;
+    --primary-hover: 217 91% 40%;
+
+    /* Secondary - Light blue accent */
+    --secondary: 210 40% 96%;
+    --secondary-foreground: 217 25% 25%;
+
+    --muted: 210 40% 96%;
+    --muted-foreground: 215 16% 47%;
+
+    --accent: 210 100% 96%;
+    --accent-foreground: 217 25% 25%;
+
+    /* Status colors */
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+    --success: 142 76% 36%;
+    --success-foreground: 0 0% 100%;
+    --warning: 38 92% 50%;
+    --warning-foreground: 0 0% 100%;
+
+    /* Threat-specific colors */
+    --malicious: 0 84% 60%;
+    --clean: 142 76% 36%;
+    --suspicious: 38 92% 50%;
+    --unknown: 215 16% 47%;
+
+    --border: 220 13% 91%;
+    --input: 220 13% 91%;
+    --ring: 217 91% 44%;
+
+    --radius: 0.5rem;
+
+    /* Gradients */
+    --gradient-primary: linear-gradient(135deg, hsl(var(--primary)), hsl(217 91% 50%));
+    --gradient-hero: linear-gradient(135deg, hsl(217 91% 44%), hsl(217 91% 50%));
+
+    /* Shadows */
+    --shadow-elegant: 0 10px 30px -10px hsl(var(--primary) / 0.2);
+    --shadow-glow: 0 0 40px hsl(var(--primary) / 0.3);
+
+    /* Transitions */
+    --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+
+    /* Sidebar colors */
+
+    --sidebar-background: 0 0% 98%;
+
+    --sidebar-foreground: 240 5.3% 26.1%;
+
+    --sidebar-primary: 240 5.9% 10%;
+
+    --sidebar-primary-foreground: 0 0% 98%;
+
+    --sidebar-accent: 240 4.8% 95.9%;
+
+    --sidebar-accent-foreground: 240 5.9% 10%;
+
+    --sidebar-border: 220 13% 91%;
+
+    --sidebar-ring: 217.2 91.2% 59.8%;
+  }
+
+  .dark {
+    /* Core dark theme colors */
+    --background: 215 25% 8%;
+    --foreground: 210 20% 95%;
+
+    --card: 215 25% 10%;
+    --card-foreground: 210 20% 95%;
+
+    --popover: 215 25% 10%;
+    --popover-foreground: 210 20% 95%;
+
+    --primary: 217 91% 54%;
+    --primary-foreground: 0 0% 100%;
+    --primary-hover: 217 91% 50%;
+
+    --secondary: 215 25% 15%;
+    --secondary-foreground: 210 20% 95%;
+
+    --muted: 215 25% 15%;
+    --muted-foreground: 215 16% 60%;
+
+    --accent: 215 25% 15%;
+    --accent-foreground: 210 20% 95%;
+
+    /* Status colors - slightly adjusted for dark theme */
+    --destructive: 0 84% 65%;
+    --destructive-foreground: 0 0% 100%;
+    --success: 142 76% 40%;
+    --success-foreground: 0 0% 100%;
+    --warning: 38 92% 55%;
+    --warning-foreground: 0 0% 100%;
+
+    /* Threat-specific colors for dark theme */
+    --malicious: 0 84% 65%;
+    --clean: 142 76% 40%;
+    --suspicious: 38 92% 55%;
+    --unknown: 215 16% 60%;
+
+    --border: 215 25% 20%;
+    --input: 215 25% 20%;
+    --ring: 217 91% 54%;
+
+    --sidebar-background: 215 25% 12%;
+    --sidebar-foreground: 210 20% 90%;
+    --sidebar-primary: 217 91% 54%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 215 25% 18%;
+    --sidebar-accent-foreground: 210 20% 90%;
+    --sidebar-border: 215 25% 20%;
+    --sidebar-ring: 217 91% 54%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+  }
+}

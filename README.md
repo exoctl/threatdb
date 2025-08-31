@@ -25,7 +25,7 @@ Using Dockerfile
 
 ```
 sudo docker build -t threatdb .
-sudo docker run --name threatdb threatdb
+sudo docker run --name threatdb -p 4173:4173  threatdb
 ```
 
 ## What is ThreatDB
