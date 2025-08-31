@@ -3,7 +3,9 @@
 <h4 align="center">ThreatDB is a software that uses the <a href="https://github.com/exoctl/exoctl" >exoctl</a> engine as a backend to manage malware.</h4>
 
 <p align="center">
-
+  <a href="https://github.com/exoctl/threatdb/actions/workflows/docker-image.yml?query=branch%3Amaster">
+    <img src="https://github.com/exoctl/threatdb/actions/workflows/docker-image.yml/badge.svg?branch=master" alt="Docker Image CI - Master">
+  </a>
 </p>
 
 
