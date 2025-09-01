@@ -1,4 +1,4 @@
-import { useState, startTransition } from "react";
+import { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { useEngineConfig } from "@/hooks/useEngineConfig";
@@ -10,14 +10,6 @@ import {
   CardTitle,
   CardDescription,
 } from "@/components/ui/card";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -33,19 +25,32 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import {
   FolderTree,
-  Shield,
-  Tag as TagIcon,
-  FileText,
   Search,
   Plus,
-  Edit,
-  ChevronDown,
-  ChevronUp,
   Loader2,
   AlertTriangle,
 } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { AnalysisRecordsResponse, Family, Tag } from "@/types/api";
+import Graph from "react-graph-vis";
+import "vis-network/styles/vis-network.css";
+import { Component } from "react";
+
+// Error Boundary Component
+class GraphErrorBoundary extends Component {
+  state = { hasError: false };
+
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return <div className="text-center py-8 text-destructive">Error rendering graph</div>;
+    }
+    return this.props.children;
+  }
+}
 
 interface FamilyFormData {
   id?: number;
@@ -59,14 +64,13 @@ interface TagFormData {
   description: string;
 }
 
-export default function ThreatTaxonomy() {
+function ThreatTaxonomy() {
   const { config } = useEngineConfig();
   const apiClient = new ApiClient(config);
   const queryClient = useQueryClient();
   const navigate = useNavigate();
 
-  const [familySearch, setFamilySearch] = useState("");
-  const [tagSearch, setTagSearch] = useState("");
+  const [search, setSearch] = useState("");
   const [familyDialog, setFamilyDialog] = useState<{ open: boolean; data: FamilyFormData | null }>({
     open: false,
     data: null,
@@ -75,33 +79,37 @@ export default function ThreatTaxonomy() {
     open: false,
     data: null,
   });
-  const [expandedFamilies, setExpandedFamilies] = useState<Set<number>>(new Set());
-  const [expandedTags, setExpandedTags] = useState<Set<number>>(new Set());
 
   // Fetch families, tags, and records
   const { data: familiesData, isLoading: isFamiliesLoading, error: familiesError } = useQuery({
-    queryKey: ['families'],
+    queryKey: ["families"],
     queryFn: () => apiClient.getFamilies(),
   });
 
   const { data: tagsData, isLoading: isTagsLoading, error: tagsError } = useQuery({
-    queryKey: ['tags'],
+    queryKey: ["tags"],
     queryFn: () => apiClient.getTags(),
   });
 
   const { data: recordsData, isLoading: isRecordsLoading } = useQuery({
-    queryKey: ['analysis-records'],
+    queryKey: ["analysis-records"],
     queryFn: () => apiClient.getAnalysisRecords(),
   });
 
-  // Debug recordsData structure
-  console.log("recordsData:", recordsData);
+  // Log input data for debugging
+  useEffect(() => {
+    console.log("Input data:", {
+      families: familiesData?.families?.length,
+      tags: tagsData?.tags?.length,
+      records: recordsData?.records?.length,
+    });
+  }, [familiesData, tagsData, recordsData]);
 
   // Mutations for create/update
   const createFamilyMutation = useMutation({
     mutationFn: (data: { name: string; description: string }) => apiClient.createFamily(data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['families'] });
+      queryClient.invalidateQueries({ queryKey: ["families"] });
       toast({ title: "Family created", description: "New family added successfully." });
       setFamilyDialog({ open: false, data: null });
     },
@@ -114,7 +122,7 @@ export default function ThreatTaxonomy() {
     mutationFn: ({ id, ...data }: { id: number; name: string; description: string }) =>
       apiClient.updateFamily(id, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['families'] });
+      queryClient.invalidateQueries({ queryKey: ["families"] });
       toast({ title: "Family updated", description: "Family details updated successfully." });
       setFamilyDialog({ open: false, data: null });
     },
@@ -126,7 +134,7 @@ export default function ThreatTaxonomy() {
   const createTagMutation = useMutation({
     mutationFn: (data: { name: string; description: string }) => apiClient.createTag(data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['tags'] });
+      queryClient.invalidateQueries({ queryKey: ["tags"] });
       toast({ title: "Tag created", description: "New tag added successfully." });
       setTagDialog({ open: false, data: null });
     },
@@ -139,7 +147,7 @@ export default function ThreatTaxonomy() {
     mutationFn: ({ id, ...data }: { id: number; name: string; description: string }) =>
       apiClient.updateTag(id, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['tags'] });
+      queryClient.invalidateQueries({ queryKey: ["tags"] });
       toast({ title: "Tag updated", description: "Tag details updated successfully." });
       setTagDialog({ open: false, data: null });
     },
@@ -152,71 +160,315 @@ export default function ThreatTaxonomy() {
   const filteredFamilies = Array.isArray(familiesData?.families)
     ? familiesData.families.filter(
         (family) =>
-          family.name.toLowerCase().includes(familySearch.toLowerCase()) ||
-          family.description.toLowerCase().includes(familySearch.toLowerCase())
+          family.name.toLowerCase().includes(search.toLowerCase()) ||
+          family.description.toLowerCase().includes(search.toLowerCase())
       )
     : [];
 
   const filteredTags = Array.isArray(tagsData?.tags)
     ? tagsData.tags.filter(
         (tag) =>
-          tag.name.toLowerCase().includes(tagSearch.toLowerCase()) ||
-          tag.description.toLowerCase().includes(tagSearch.toLowerCase())
+          tag.name.toLowerCase().includes(search.toLowerCase()) ||
+          tag.description.toLowerCase().includes(search.toLowerCase())
       )
     : [];
 
-  // Get associated records
-  const getAssociatedRecords = (familyId?: number, tagId?: number) => {
-    // Ensure recordsData.records is an array
-    if (!recordsData || !Array.isArray(recordsData.records)) {
-      console.warn("recordsData.records is not an array:", recordsData?.records);
-      return [];
-    }
+  // Get associated records with validation
+  const getAssociatedRecords = useCallback(
+    (familyId?: number, tagId?: number) => {
+      if (!recordsData || !Array.isArray(recordsData.records)) {
+        console.warn("recordsData.records is not an array:", recordsData?.records);
+        return [];
+      }
 
-    return recordsData.records.filter((record) => {
-      // Debug record.tags
-      console.log(`Record ${record.sha256} tags:`, record.tags);
-
-      if (familyId) return record.family_id === familyId;
-      if (tagId) {
-        // Ensure tags is an array before calling .some
-        if (!Array.isArray(record.tags)) {
-          console.warn(`Tags for record ${record.sha256} is not an array:`, record.tags);
+      const filtered = recordsData.records.filter((record) => {
+        if (!record.sha256 || !record.file_name) {
+          console.warn(`Invalid record:`, record);
           return false;
         }
-        return record.tags.some((tag) => tag.id === tagId);
-      }
-      return false;
-    });
-  };
+        if (familyId) {
+          if (typeof record.family_id !== "number") {
+            console.warn(`Invalid family_id for record ${record.sha256}:`, record.family_id);
+            return false;
+          }
+          const match = record.family_id === familyId;
+          console.log(`Checking family_id ${familyId} for record ${record.sha256}: ${match}`);
+          return match;
+        }
+        if (tagId) {
+          if (!Array.isArray(record.tags)) {
+            console.warn(`Tags for record ${record.sha256} is not an array:`, record.tags);
+            return false;
+          }
+          const match = record.tags.some((tag) => tag.id === tagId);
+          console.log(`Checking tag_id ${tagId} for record ${record.sha256}: ${match}`);
+          return match;
+        }
+        return false;
+      });
 
-  const toggleExpandFamily = (id: number) => {
-    setExpandedFamilies((prev) => {
-      const newSet = new Set(prev);
-      if (newSet.has(id)) newSet.delete(id);
-      else newSet.add(id);
-      return newSet;
-    });
-  };
+      console.log(`Associated records for familyId=${familyId}, tagId=${tagId}:`, filtered.length);
+      return filtered;
+    },
+    [recordsData]
+  );
 
-  const toggleExpandTag = (id: number) => {
-    setExpandedTags((prev) => {
-      const newSet = new Set(prev);
-      if (newSet.has(id)) newSet.delete(id);
-      else newSet.add(id);
-      return newSet;
-    });
-  };
+  // Generate nodes and edges for vis.js
+  const generateGraphData = useCallback(() => {
+    const nodes: any[] = [];
+    const edges: any[] = [];
 
-  const handleNavigate = (path: string) => {
-    startTransition(() => {
-      navigate(path);
+    // Add family nodes with initial positions
+    filteredFamilies.forEach((family: Family, index: number) => {
+      nodes.push({
+        id: `family-${family.id}`,
+        label: family.name,
+        shape: "box",
+        color: { background: "#bfdbfe", border: "#3b82f6" },
+        title: family.description,
+        level: 0,
+        x: 100 + index * 800, // Large spacing
+        y: 100,
+        fixed: { x: true, y: true }, // Fixed by default
+        data: { type: "family", id: family.id, name: family.name, description: family.description },
+      });
     });
-  };
+
+    // Add tag nodes with initial positions
+    filteredTags.forEach((tag: Tag, index: number) => {
+      nodes.push({
+        id: `tag-${tag.id}`,
+        label: tag.name,
+        shape: "box",
+        color: { background: "#bbf7d0", border: "#16a34a" },
+        title: tag.description,
+        level: 1,
+        x: 100 + index * 800, // Large spacing
+        y: 400,
+        fixed: { x: true, y: true }, // Fixed by default
+        data: { type: "tag", id: tag.id, name: tag.name, description: tag.description },
+      });
+    });
+
+    // Collect unique records
+    const uniqueRecords = new Map<string, any>();
+    filteredFamilies.forEach((family) => {
+      getAssociatedRecords(family.id).forEach((record) => {
+        if (!uniqueRecords.has(record.sha256)) {
+          uniqueRecords.set(record.sha256, record);
+        }
+      });
+    });
+    filteredTags.forEach((tag) => {
+      getAssociatedRecords(undefined, tag.id).forEach((record) => {
+        if (!uniqueRecords.has(record.sha256)) {
+          uniqueRecords.set(record.sha256, record);
+        }
+      });
+    });
+
+    // Add unique record nodes with initial positions
+    Array.from(uniqueRecords.values()).forEach((record, index) => {
+      nodes.push({
+        id: `record-${record.sha256}`,
+        label: `${record.file_name} (${record.sha256.substring(0, 12)}...)`,
+        shape: "box",
+        color: { background: "#e5e7eb", border: "#6b7280" },
+        title: record.sha256,
+        level: 2,
+        x: 100 + index * 800, // Large spacing
+        y: 700,
+        fixed: { x: true, y: true }, // Fixed by default
+        data: { type: "record", sha256: record.sha256 },
+      });
+    });
+
+    // Add edges from families to records
+    filteredFamilies.forEach((family: Family) => {
+      getAssociatedRecords(family.id).forEach((record) => {
+        const edge = {
+          from: `family-${family.id}`,
+          to: `record-${record.sha256}`,
+          color: "#3b82f6",
+          arrows: "to",
+          length: 300,
+          smooth: { type: "cubicBezier" },
+        };
+        console.log("Adding edge:", edge);
+        edges.push(edge);
+      });
+    });
+
+    // Add edges from tags to records
+    filteredTags.forEach((tag: Tag) => {
+      getAssociatedRecords(undefined, tag.id).forEach((record) => {
+        const edge = {
+          from: `tag-${tag.id}`,
+          to: `record-${record.sha256}`,
+          color: "#ff0072",
+          arrows: "to",
+          length: 300,
+          smooth: { type: "cubicBezier" },
+        };
+        console.log("Adding edge:", edge);
+        edges.push(edge);
+      });
+    });
+
+    console.log("Generated graph data:", {
+      nodes: nodes.length,
+      edges: edges.length,
+      nodePositions: nodes.map((n) => ({ id: n.id, x: n.x, y: n.y, level: n.level })),
+    });
+    return { nodes, edges };
+  }, [filteredFamilies, filteredTags, getAssociatedRecords]);
+
+  const [graphData, setGraphData] = useState<{ nodes: any[]; edges: any[] }>({ nodes: [], edges: [] });
+
+  // Ref for the graph component
+  const graphRef = useRef<any>(null);
+
+  // Update graph data, preserving fixed positions
+  useEffect(() => {
+    if (isFamiliesLoading || isTagsLoading || isRecordsLoading) return;
+    const newData = generateGraphData();
+    setGraphData((prev) => {
+      const updatedNodes = newData.nodes.map((newNode) => {
+        const existingNode = prev.nodes.find((n) => n.id === newNode.id);
+        if (existingNode?.fixed) {
+          return {
+            ...newNode,
+            x: existingNode.x,
+            y: existingNode.y,
+            fixed: existingNode.fixed,
+          };
+        }
+        return newNode;
+      });
+      return { nodes: updatedNodes, edges: newData.edges };
+    });
+  }, [isFamiliesLoading, isTagsLoading, isRecordsLoading, generateGraphData]);
+
+  // vis.js options - Optimized for stability and clear visualization
+  const options = useMemo(
+    () => ({
+      layout: {
+        hierarchical: {
+          enabled: true,
+          direction: "LR",
+          sortMethod: "directed",
+          nodeSpacing: 800, // Large spacing for clarity
+          levelSeparation: 500, // Large separation for clarity
+          treeSpacing: 800, // Large spacing for clarity
+          blockShifting: false,
+          edgeMinimization: false,
+          parentCentralization: false,
+        },
+      },
+      nodes: {
+        shape: "box",
+        size: 25, // Larger nodes for better visibility
+        font: { size: 14 }, // Larger font for readability
+        scaling: {
+          min: 10,
+          max: 30,
+        },
+      },
+      edges: {
+        smooth: { type: "cubicBezier", forceDirection: "horizontal" },
+        arrows: { to: { enabled: true, scaleFactor: 0.5 } },
+      },
+      physics: {
+        enabled: false, // Disabled for stability
+      },
+      interaction: {
+        dragNodes: true, // Enable dragging
+        zoomView: true,
+        dragView: true,
+        zoomSpeed: 0.2,
+        zoomMin: 0.05, // Allow zooming out further
+        zoomMax: 3.0, // Allow zooming in further
+        hover: true,
+        multiselect: false,
+      },
+      height: "100%",
+    }),
+    []
+  );
+
+  // Event handlers for node interactions
+  const events = useMemo(
+    () => ({
+      selectNode: ({ nodes }: { nodes: string[] }) => {
+        if (nodes.length === 0) return;
+        const nodeId = nodes[0];
+        const node = graphData.nodes.find((n) => n.id === nodeId);
+        if (!node) return;
+
+        console.log("Node selected:", nodeId);
+        if (node.data.type === "family") {
+          setFamilyDialog({
+            open: true,
+            data: {
+              id: node.data.id,
+              name: node.data.name,
+              description: node.data.description,
+            },
+          });
+        } else if (node.data.type === "tag") {
+          setTagDialog({
+            open: true,
+            data: {
+              id: node.data.id,
+              name: node.data.name,
+              description: node.data.description,
+            },
+          });
+        } else if (node.data.type === "record") {
+          navigate(`/file/${node.data.sha256}`);
+        }
+      },
+      dragStart: ({ nodes }: { nodes: string[] }) => {
+        console.log("Dragging node:", nodes);
+        setGraphData((prev) => ({
+          ...prev,
+          nodes: prev.nodes.map((node) =>
+            nodes.includes(node.id) ? { ...node, fixed: false } : node
+          ),
+        }));
+      },
+      dragEnd: ({ nodes }: { nodes: string[] }) => {
+        if (nodes.length === 0) return;
+        const network = graphRef.current?.Network;
+        if (network) {
+          network.storePositions();
+          const positions = network.getPositions(nodes);
+          console.log("Node positions saved:", positions);
+          setGraphData((prev) => {
+            const updated = {
+              ...prev,
+              nodes: prev.nodes.map((node) =>
+                nodes.includes(node.id)
+                  ? {
+                      ...node,
+                      fixed: { x: true, y: true },
+                      x: typeof positions[node.id]?.x === "number" ? positions[node.id].x : node.x ?? 0,
+                      y: typeof positions[node.id]?.y === "number" ? positions[node.id].y : node.y ?? 0,
+                    }
+                  : node
+              ),
+            };
+            console.log("Updated graphData with fixed nodes:", updated.nodes.filter((n) => nodes.includes(n.id)));
+            return updated;
+          });
+        }
+      },
+    }),
+    [graphData, navigate]
+  );
 
   return (
     <div className="p-6 space-y-8">
-      {/* Header */}
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
         <div>
           <h1 className="text-4xl font-bold tracking-tight flex items-center gap-3">
@@ -226,7 +478,7 @@ export default function ThreatTaxonomy() {
             Threat Taxonomy
           </h1>
           <p className="text-muted-foreground text-lg mt-2">
-            Manage malware families and tags for analysis records
+            Visual representation of malware families, tags, and their relationships
           </p>
         </div>
         <div className="flex items-center gap-4">
@@ -245,14 +497,13 @@ export default function ThreatTaxonomy() {
         </div>
       </div>
 
-      {/* Families Section */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <Shield className="h-5 w-5" />
-            Malware Families
+            <FolderTree className="h-5 w-5" />
+            Taxonomy Graph
           </CardTitle>
-          <CardDescription>Organize analysis records by malware family</CardDescription>
+          <CardDescription>Visualize malware families, tags, and their associated records</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="flex flex-col lg:flex-row gap-6 mb-4">
@@ -260,246 +511,56 @@ export default function ThreatTaxonomy() {
               <div className="relative">
                 <Search className="absolute left-3 top-3 h-5 w-5 text-muted-foreground" />
                 <Input
-                  placeholder="Search families by name or description..."
-                  value={familySearch}
-                  onChange={(e) => setFamilySearch(e.target.value)}
+                  placeholder="Search families or tags by name or description..."
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
                   className="pl-10 h-12 text-base"
                 />
               </div>
             </div>
-            <Button
-              onClick={() => setFamilyDialog({ open: true, data: { name: "", description: "" } })}
-            >
-              <Plus className="h-4 w-4 mr-2" />
-              New Family
-            </Button>
+            <div className="flex gap-4">
+              <Button
+                onClick={() => setFamilyDialog({ open: true, data: { name: "", description: "" } })}
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                New Family
+              </Button>
+              <Button
+                onClick={() => setTagDialog({ open: true, data: { name: "", description: "" } })}
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                New Tag
+              </Button>
+            </div>
           </div>
-          {isFamiliesLoading ? (
+          {(isFamiliesLoading || isTagsLoading || isRecordsLoading) ? (
             <div className="text-center py-8">
               <Loader2 className="h-8 w-8 animate-spin mx-auto" />
-              <p className="text-muted-foreground">Loading families...</p>
+              <p className="text-muted-foreground">Loading taxonomy...</p>
             </div>
-          ) : familiesError ? (
-            <div className="text-center py-8 text-destructive">Error loading families</div>
-          ) : filteredFamilies.length > 0 ? (
-            <div className="rounded-md border overflow-auto max-h-[400px]">
-              <Table>
-                <TableHeader className="sticky top-0 bg-background z-10">
-                  <TableRow>
-                    <TableHead>Name</TableHead>
-                    <TableHead>Description</TableHead>
-                    <TableHead>Associated Binaries</TableHead>
-                    <TableHead>Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredFamilies.map((family: Family) => {
-                    const associatedRecords = getAssociatedRecords(family.id);
-                    return (
-                      <>
-                        <TableRow key={family.id}>
-                          <TableCell className="font-medium">
-                            <div className="flex items-center gap-2">
-                              <Shield className="h-4 w-4 text-muted-foreground" />
-                              {family.name}
-                            </div>
-                          </TableCell>
-                          <TableCell>{family.description || "N/A"}</TableCell>
-                          <TableCell>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => toggleExpandFamily(family.id)}
-                            >
-                              {associatedRecords.length} Binaries
-                              {expandedFamilies.has(family.id) ? (
-                                <ChevronUp className="h-4 w-4 ml-2" />
-                              ) : (
-                                <ChevronDown className="h-4 w-4 ml-2" />
-                              )}
-                            </Button>
-                          </TableCell>
-                          <TableCell>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() =>
-                                setFamilyDialog({
-                                  open: true,
-                                  data: { id: family.id, name: family.name, description: family.description },
-                                })
-                              }
-                            >
-                              <Edit className="h-4 w-4" />
-                            </Button>
-                          </TableCell>
-                        </TableRow>
-                        {expandedFamilies.has(family.id) && (
-                          <TableRow key={`expanded-family-${family.id}`}>
-                            <TableCell colSpan={4}>
-                              <div className="pl-6 py-2">
-                                {associatedRecords.length > 0 ? (
-                                  <ul className="list-disc text-sm text-muted-foreground">
-                                    {associatedRecords.map((record) => (
-                                      <li
-                                        key={record.sha256}
-                                        className="cursor-pointer hover:text-primary"
-                                        onClick={() => handleNavigate(`/file/${record.sha256}`)}
-                                      >
-                                        {record.file_name} ({record.sha256.substring(0, 12)}...)
-                                      </li>
-                                    ))}
-                                  </ul>
-                                ) : (
-                                  <p className="text-sm text-muted-foreground">No associated binaries</p>
-                                )}
-                              </div>
-                            </TableCell>
-                          </TableRow>
-                        )}
-                      </>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            </div>
+          ) : (familiesError || tagsError) ? (
+            <div className="text-center py-8 text-destructive">Error loading taxonomy</div>
+          ) : (filteredFamilies.length > 0 || filteredTags.length > 0) ? (
+            <GraphErrorBoundary>
+              <div className="rounded-md border" style={{ height: "80vh", minHeight: "600px" }}>
+                <Graph
+                  ref={graphRef}
+                  graph={graphData}
+                  options={options}
+                  events={events}
+                  key={JSON.stringify(graphData.nodes.map((n) => n.id))}
+                />
+              </div>
+            </GraphErrorBoundary>
           ) : (
             <div className="text-center py-8">
-              <Shield className="h-12 w-12 mx-auto text-muted-foreground" />
-              <p className="text-muted-foreground">No families found</p>
+              <FolderTree className="h-12 w-12 mx-auto text-muted-foreground" />
+              <p className="text-muted-foreground">No families or tags found</p>
             </div>
           )}
         </CardContent>
       </Card>
 
-      {/* Tags Section */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <TagIcon className="h-5 w-5" />
-            Tags
-          </CardTitle>
-          <CardDescription>Label analysis records with descriptive tags</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex flex-col lg:flex-row gap-6 mb-4">
-            <div className="flex-1">
-              <div className="relative">
-                <Search className="absolute left-3 top-3 h-5 w-5 text-muted-foreground" />
-                <Input
-                  placeholder="Search tags by name or description..."
-                  value={tagSearch}
-                  onChange={(e) => setTagSearch(e.target.value)}
-                  className="pl-10 h-12 text-base"
-                />
-              </div>
-            </div>
-            <Button
-              onClick={() => setTagDialog({ open: true, data: { name: "", description: "" } })}
-            >
-              <Plus className="h-4 w-4 mr-2" />
-              New Tag
-            </Button>
-          </div>
-          {isTagsLoading ? (
-            <div className="text-center py-8">
-              <Loader2 className="h-8 w-8 animate-spin mx-auto" />
-              <p className="text-muted-foreground">Loading tags...</p>
-            </div>
-          ) : tagsError ? (
-            <div className="text-center py-8 text-destructive">Error loading tags</div>
-          ) : filteredTags.length > 0 ? (
-            <div className="rounded-md border overflow-auto max-h-[400px]">
-              <Table>
-                <TableHeader className="sticky top-0 bg-background z-10">
-                  <TableRow>
-                    <TableHead>Name</TableHead>
-                    <TableHead>Description</TableHead>
-                    <TableHead>Associated Binaries</TableHead>
-                    <TableHead>Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredTags.map((tag: Tag) => {
-                    const associatedRecords = getAssociatedRecords(undefined, tag.id);
-                    return (
-                      <>
-                        <TableRow key={tag.id}>
-                          <TableCell className="font-medium">
-                            <div className="flex items-center gap-2">
-                              <TagIcon className="h-4 w-4 text-muted-foreground" />
-                              {tag.name}
-                            </div>
-                          </TableCell>
-                          <TableCell>{tag.description || "N/A"}</TableCell>
-                          <TableCell>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => toggleExpandTag(tag.id)}
-                            >
-                              {associatedRecords.length} Binaries
-                              {expandedTags.has(tag.id) ? (
-                                <ChevronUp className="h-4 w-4 ml-2" />
-                              ) : (
-                                <ChevronDown className="h-4 w-4 ml-2" />
-                              )}
-                            </Button>
-                          </TableCell>
-                          <TableCell>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() =>
-                                setTagDialog({
-                                  open: true,
-                                  data: { id: tag.id, name: tag.name, description: tag.description },
-                                })
-                              }
-                            >
-                              <Edit className="h-4 w-4" />
-                            </Button>
-                          </TableCell>
-                        </TableRow>
-                        {expandedTags.has(tag.id) && (
-                          <TableRow key={`expanded-tag-${tag.id}`}>
-                            <TableCell colSpan={4}>
-                              <div className="pl-6 py-2">
-                                {associatedRecords.length > 0 ? (
-                                  <ul className="list-disc text-sm text-muted-foreground">
-                                    {associatedRecords.map((record) => (
-                                      <li
-                                        key={record.sha256}
-                                        className="cursor-pointer hover:text-primary"
-                                        onClick={() => handleNavigate(`/file/${record.sha256}`)}
-                                      >
-                                        {record.file_name} ({record.sha256.substring(0, 12)}...)
-                                      </li>
-                                    ))}
-                                  </ul>
-                                ) : (
-                                  <p className="text-sm text-muted-foreground">No associated binaries</p>
-                                )}
-                              </div>
-                            </TableCell>
-                          </TableRow>
-                        )}
-                      </>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            </div>
-          ) : (
-            <div className="text-center py-8">
-              <TagIcon className="h-12 w-12 mx-auto text-muted-foreground" />
-              <p className="text-muted-foreground">No tags found</p>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Family Dialog */}
       <Dialog
         open={familyDialog.open}
         onOpenChange={(open) => setFamilyDialog({ open, data: open ? familyDialog.data : null })}
@@ -585,7 +646,6 @@ export default function ThreatTaxonomy() {
         </DialogContent>
       </Dialog>
 
-      {/* Tag Dialog */}
       <Dialog
         open={tagDialog.open}
         onOpenChange={(open) => setTagDialog({ open, data: open ? tagDialog.data : null })}
@@ -671,3 +731,5 @@ export default function ThreatTaxonomy() {
     </div>
   );
 }
+
+export default ThreatTaxonomy;
