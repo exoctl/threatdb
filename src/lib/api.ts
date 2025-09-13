@@ -23,6 +23,12 @@ interface CreateUpdateResponse {
   status: string;
 }
 
+export interface StringsResponse {
+  strings: string[];
+  code: number;
+  status: string;
+}
+
 class ApiClient {
   private baseUrl: string;
 
@@ -101,6 +107,10 @@ class ApiClient {
 
   async getThreats(sha256: string): Promise<ThreatsResponse> {
     return this.post<ThreatsResponse>('/engine/v1/analysis/scan/threats', { sha256 });
+  }
+
+  async getExtractedStrings(sha256: string): Promise<StringsResponse> {
+    return this.post<StringsResponse>('/records/extract/strings', { sha256 });
   }
 
   async getPlugins(): Promise<PluginsResponse> {
